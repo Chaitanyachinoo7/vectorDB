@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from .ai import RagDeps, create_rag_agent
 from .config import settings
@@ -48,24 +48,32 @@ def health() -> dict[str, str]:
 
 @app.post("/documents", response_model=UpsertResponse)
 def upsert_documents(documents: list[DocumentIn]) -> UpsertResponse:
-    store: ChromaVectorStore = app.state.vector_store
-    ids = store.upsert(VectorDocument(id=d.id, text=d.text, metadata=d.metadata) for d in documents)
-    return UpsertResponse(ids=ids)
+    try:
+        store: ChromaVectorStore = app.state.vector_store
+        ids = store.upsert(VectorDocument(id=d.id, text=d.text, metadata=d.metadata) for d in documents)
+        return UpsertResponse(ids=ids)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"upsert failed: {type(e).__name__}: {e}")
 
 
 @app.post("/query", response_model=QueryResponse)
 def query_documents(req: QueryRequest) -> QueryResponse:
-    store: ChromaVectorStore = app.state.vector_store
-    results = [QueryResult(**r) for r in store.query(req.query, top_k=req.top_k)]
-    return QueryResponse(results=results)
+    try:
+        store: ChromaVectorStore = app.state.vector_store
+        results = [QueryResult(**r) for r in store.query(req.query, top_k=req.top_k)]
+        return QueryResponse(results=results)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"query failed: {type(e).__name__}: {e}")
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
-    store: ChromaVectorStore = app.state.vector_store
-    agent = app.state.rag_agent
-
-    retrieved = [QueryResult(**r) for r in store.query(req.message, top_k=req.top_k)]
-    deps = RagDeps(store=store, default_top_k=req.top_k)
-    run_result = await agent.run(req.message, deps=deps)
-    return ChatResponse(answer=run_result.output, retrieved=retrieved)
+    try:
+        store: ChromaVectorStore = app.state.vector_store
+        agent = app.state.rag_agent
+        retrieved = [QueryResult(**r) for r in store.query(req.message, top_k=req.top_k)]
+        deps = RagDeps(store=store, default_top_k=req.top_k)
+        run_result = await agent.run(req.message, deps=deps)
+        return ChatResponse(answer=run_result.output, retrieved=retrieved)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"chat failed: {type(e).__name__}: {e}")

@@ -27,6 +27,7 @@ class ChromaVectorStore:
         self._collection_name = collection
         self._embedding_dim = embedding_dim
 
+        os.makedirs(path, exist_ok=True)
         try:
             self._client = chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))
         except TypeError:
@@ -46,7 +47,7 @@ class ChromaVectorStore:
             doc_id = d.id or uuid4().hex
             ids.append(doc_id)
             documents.append(d.text)
-            metadatas.append(d.metadata)
+            metadatas.append(d.metadata if d.metadata else {"_": ""})
 
         embeddings = embed_texts(documents, dim=self._embedding_dim)
         self._collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
@@ -67,11 +68,14 @@ class ChromaVectorStore:
 
         out: list[dict[str, Any]] = []
         for i in range(min(len(ids), len(documents))):
+            md = metadatas[i] or {}
+            if md.get("_") == "":
+                md = {k: v for k, v in md.items() if k != "_"}
             out.append(
                 {
                     "id": ids[i],
                     "text": documents[i],
-                    "metadata": metadatas[i] or {},
+                    "metadata": md,
                     "distance": distances[i] if i < len(distances) else None,
                 }
             )
